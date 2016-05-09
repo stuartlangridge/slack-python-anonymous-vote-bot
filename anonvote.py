@@ -196,7 +196,7 @@ def process_message(data):
         # check if there are votes going on and the person who has just spoken has
         # not voted. If they have not, check when we last nudged them. If it's long enough
         # ago, then they are around, and can be nudged
-        speaker = data["user"]+"!"
+        speaker = data["user"]
         timeouts = []
         if len(votes_in_progress.keys()) > 0:
             for about, details in votes_in_progress.items():
@@ -218,7 +218,7 @@ def process_message(data):
                                 timeouts.append(about)
         if timeouts:
             for t in timeouts:
-                outputs.append([data["channel"], ("I'm afraid the vote for %s has timed out. "
+                outputs.append([data["channel"], ("I'm afraid the vote for *%s* has timed out. "
                     "Maybe try it again when more people are around.") % (t,)])
                 del(votes_in_progress[t])
 
