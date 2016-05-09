@@ -1,3 +1,5 @@
+import time
+
 outputs = []
 get_slack = None
 me = {}
@@ -46,6 +48,7 @@ def ask_users(channel, ask_about):
     slack = get_slack()
     cinfo = slack.api_call("channels.info", channel=channel)
     vote_items = {}
+    print "Asking users in", cinfo
     for member in cinfo["channel"]["members"]:
         if member == me["user_id"]: continue
         chat = slack.api_call("im.open", user=member)
@@ -65,12 +68,20 @@ def ask_users(channel, ask_about):
                 ask_about=ask_about, member=member, chat=chat)
         }
         slack.server.send_to_websocket(message_json)
-        vote_items[member] = {"ts": None, "vote": None}
+        vote_items[member] = {"ts": None, "vote": None, 
+            "last_asked": time.time(), "im": chat["channel"]["id"], "nudges": 0}
     votes_in_progress[ask_about] = {"votes": vote_items, "channel": channel}
     print "Have set votes in progress to", votes_in_progress
 
 def process_reaction_added(data):
-    print "in PRA"
+    channel = "NONE"
+    item = data.get("item")
+    if item:
+        channel = item.get("channel")
+    if not channel.startswith("D"):
+        print "Ignoring emoji reaction in channel", channel
+        return
+    print "in PRA", data
     if data["reaction"] not in ["+1", "-1"]:
         outputs.append([data["item"]["channel"], "(sorry, only :+1: and :-1: emojis allowed)"])
         return
@@ -130,6 +141,7 @@ def process_message(data):
                 if not ts:
                     print "ERROR: got an emoji IM (not reaction) from someone unexpected", data
                     return
+                print "ok, doing a process_reaction_added for", data
                 process_reaction_added({
                     "reaction": reaction,
                     "item": {
@@ -180,6 +192,35 @@ def process_message(data):
                 ("Hey, <@%s>, to ask me to run an anonymous vote on whether someone should "
                  "be invited to the channel, "
                  "say `@vote on Jane Smith`.") % (data["user"],)])
+    else:
+        # check if there are votes going on and the person who has just spoken has
+        # not voted. If they have not, check when we last nudged them. If it's long enough
+        # ago, then they are around, and can be nudged
+        speaker = data["user"]+"!"
+        timeouts = []
+        if len(votes_in_progress.keys()) > 0:
+            for about, details in votes_in_progress.items():
+                for userid, vi in details["votes"].items():
+                    if userid == speaker:
+                        if vi["vote"] is None:
+                            if time.time() - vi["last_asked"] > 3600:
+                                nudge = ("Hey, there's a vote outstanding to invite "
+                                    "%s which you haven't voted in yet; can you do so? %s") % (about,vi["nudges"])
+                                outputs.append([vi["im"], nudge])
+                                vi["last_asked"] = time.time()
+                                vi["nudges"] = vi["nudges"] + 1
+                    else:
+                        if vi["vote"] is None:
+                            # this is someone else who hasn't voted
+                            if time.time() - vi["last_asked"] > (24 * 60 * 60):
+                                # they were last asked 24 hours ago and haven't spoken since
+                                # time out the vote
+                                timeouts.append(about)
+        if timeouts:
+            for t in timeouts:
+                outputs.append([data["channel"], ("I'm afraid the vote for %s has timed out. "
+                    "Maybe try it again when more people are around.") % (t,)])
+                del(votes_in_progress[t])
 
 
 
