@@ -1,4 +1,4 @@
-# Anonymous bote bot for Slack
+# Anonymous vote bot for Slack
 
 A Slack bot to handle anonymous votes. Built as a plugin for [slackhq/python-rtmbot](https://github.com/slackhq/python-rtmbot).
 
